@@ -1,0 +1,96 @@
+--- a/src/ops/arcpoly.cpp
++++ b/src/ops/arcpoly.cpp
+@@ -168,6 +168,77 @@
+   out.push_back(b);
+ }
+ 
++// [cad_agent patch 0001] Densified polygon cache.
++// The densified polygon depends only on (vertices, edges), yet it used to be
++// rebuilt -- sample_arc: two atan2 and n_seg sincos per arc -- for EVERY query
++// point.  It is now built once per distinct (vertices, edges) and reused.  The
++// build below is the former loop verbatim, so the polygon (and the SDF) is
++// bitwise identical.  The key is the CONTENT compared bit for bit (memcmp:
++// -0.0 != 0.0, NaN == NaN), never a "params changed" signal: vertices are a
++// public member and are also written outside setParams.  The cache is
++// thread_local: calcSdfWithDiff runs under OpenMP, one cache per thread, no
++// locks.  The vertices pointer is only a hint to find the slot fast; a hit
++// always requires equal content, so a reused address cannot alias.
++namespace {
++
++struct PolyCacheSlot {
++  const double2* owner = nullptr;
++  std::vector<double2> vertices;
++  std::vector<ArcEdge> edges;
++  std::vector<double2> poly;
++};
++
++constexpr int kPolyCacheSlots = 32;
++
++struct PolyCache {
++  PolyCacheSlot slot[kPolyCacheSlots];
++  int next = 0;
++};
++
++static bool same_bits(double a, double b) { return std::memcmp(&a, &b, sizeof a) == 0; }
++
++static bool same_key(const PolyCacheSlot& s, const double2* vertices, int n, const ArcEdge* edges) {
++  static_assert(sizeof(double2) == 2 * sizeof(double), "double2 must be two packed doubles");
++  if ((int)s.vertices.size() != n) return false;
++  if (std::memcmp(s.vertices.data(), vertices, n * sizeof(double2)) != 0) return false;
++  for (int i = 0; i < n; i++) {
++    const ArcEdge& a = s.edges[i];
++    const ArcEdge& b = edges[i];
++    if (a.is_arc != b.is_arc || a.major != b.major ||
++        !same_bits(a.r_s, b.r_s) || !same_bits(a.side, b.side))
++      return false;
++  }
++  return true;
++}
++
++}  // namespace
++
++static const std::vector<double2>& densified_polygon(const double2* vertices, int n,
++                                                     const ArcEdge* edges) {
++  thread_local PolyCache cache;
++  PolyCacheSlot* s = nullptr;
++  for (int k = 0; k < kPolyCacheSlots; k++)
++    if (cache.slot[k].owner == vertices) { s = &cache.slot[k]; break; }
++  if (s != nullptr && same_key(*s, vertices, n, edges)) return s->poly;
++  if (s == nullptr) {
++    s = &cache.slot[cache.next];
++    cache.next = (cache.next + 1) % kPolyCacheSlots;
++  }
++  s->owner = vertices;
++  s->vertices.assign(vertices, vertices + n);
++  s->edges.assign(edges, edges + n);
++  std::vector<double2>& poly = s->poly;
++  poly.clear(); poly.reserve(n * 4);
++  for (int i = 0; i < n; i++) {
++    int j = (i + 1) % n;
++    poly.push_back(vertices[i]);
++    if (edges[i].is_arc)
++      sample_arc(vertices[i], vertices[j], edges[i].r_s, edges[i].side, edges[i].major, poly);  // adds interiors + endpoint
++    // for line edges the next vertices[i] (= vertices[j]) is pushed next loop
++  }
++  return poly;
++}
++
+ double sdf_arcpoly(const double2* vertices, int n, const ArcEdge* edges, double2 p,
+                    double* dparams, double* dp) {
+   std::memset(dparams, 0, 2 * n * sizeof(double));
+@@ -187,14 +258,7 @@
+   }
+ 
+   // 2) sign via densified winding (arcs sampled; distance stays exact)
+-  std::vector<double2> poly; poly.reserve(n * 4);
+-  for (int i = 0; i < n; i++) {
+-    int j = (i + 1) % n;
+-    poly.push_back(vertices[i]);
+-    if (edges[i].is_arc)
+-      sample_arc(vertices[i], vertices[j], edges[i].r_s, edges[i].side, edges[i].major, poly);  // adds interiors + endpoint
+-    // for line edges the next vertices[i] (= vertices[j]) is pushed next loop
+-  }
++  const std::vector<double2>& poly = densified_polygon(vertices, n, edges);
+   int m = (int)poly.size();
+   // NON-ZERO winding number (matches cadquery / OCC's BRep fill rule).  Identical
+   // to even-odd for simple profiles, but for SELF-INTERSECTING profiles (which the

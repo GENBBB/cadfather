@@ -1,0 +1,111 @@
+# `dialogue_lean`: the configuration of the paper's main results.
+#
+# Replace `/path/to/...` with your models, environments and parts.
+# Run from `agent/`: `./run_system.sh configs/dialogue_lean.yaml`, or on a folder of STL
+# files: `./run_folder.sh <dir>` (takes this config and replaces `experiment.details`).
+
+dsl: wrapped
+model:
+  # Generator: the step-wise CADENA VLM after RL, subfolder `rl` of the HF repo
+  # `kulibinai/cadena`. vLLM cannot load a hub subfolder, so download it first:
+  #   huggingface-cli download kulibinai/cadena --include 'rl/*' --local-dir /path/to/models/cadena
+  generation_model_path: /path/to/models/cadena/rl
+  # Assistant: Qwen3.8-27B, FP8 checkpoint.
+  assistant_model_path: Qwen/Qwen3.8-27B-FP8
+server:
+  generation_base_url: http://127.0.0.1:8001/v1
+  assistant_base_url: http://127.0.0.1:8016/v1
+  generation_served_model_name: generation
+  assistant_served_model_name: assistant
+launch:
+  # Run environment, also serves the assistant (`agent/env/run_env.txt`).
+  vllm_env: /path/to/envs/cad_run
+  run_env: /path/to/envs/cad_run
+  runs_root: work_dirs
+  run_name: dialogue_lean
+  server_timeout_sec: 300
+  servers:
+    generation:
+      enabled: true
+      # The generator needs its own vLLM version (`agent/env/gen_env.txt`).
+      vllm_env: /path/to/envs/cad_gen
+      cuda_visible_devices: "2"
+      args:
+        trust-remote-code: true
+        dtype: bfloat16
+        tensor-parallel-size: 1
+        pipeline-parallel-size: 1
+        data-parallel-size: 1
+        gpu-memory-utilization: 0.9
+        max-model-len: 8192
+        no-enable-prefix-caching: true
+        limit-mm-per-prompt: '{"image": 1}'
+    assistant:
+      enabled: true
+      cuda_visible_devices: "0,1,3"
+      args:
+        trust-remote-code: true
+        dtype: bfloat16
+        tensor-parallel-size: 1
+        pipeline-parallel-size: 1
+        data-parallel-size: 3
+        gpu-memory-utilization: 0.9
+        max-model-len: 32768
+        limit-mm-per-prompt: '{"image": 6}'
+        mm-processor-kwargs: '{"min_pixels": 200704, "max_pixels": 508032}'
+        enable-prefix-caching: true
+        enable-auto-tool-choice: true
+        tool-call-parser: qwen3_coder
+        reasoning-parser: qwen3
+experiment:
+  # Directories of ground-truth meshes (STL), one per split: `name: path`.
+  details:
+    - parts: /path/to/stl_dir
+  compute_metrics: true
+  extended_metrics: false
+  n_workers: 48
+  figure_wall_sec: 1000
+  seed: 42
+  metrics:
+    cd: false
+  # The paper's ablations change only this list: [stepwise, optimize] (without det),
+  # [stepwise, det_cold, det_warm] (without optimize), [stepwise] (stepwise only).
+  tools: [stepwise, det_cold, det_warm, optimize]
+  scaffold:
+    kind: policy
+    policy: dialogue_lean
+  agent:
+    thinking: false
+  limits:
+    iterations: 24
+    depth: 12
+  execution:
+    backend: proxy_pool
+    pool_size: 3
+    timeout_sec: 30
+    det_timeout_sec: 180
+    det_budget_sec: 600
+    opt_timeout_sec: 30
+    det_residual_faces: 1500
+    native_threads: 1
+  generation:
+    max_tokens: 1024
+    postprocess_code: false
+    max_attempts: 3
+  cache:
+    render_images: 16
+  logging:
+    level: full
+    profile: true
+    report: true
+    save_meshes: best
+    candidates: true
+  budget:
+    vlm: 80
+    agent_text: 48
+    agent_visual: 96
+    agent_repair: 20
+    opt: 10
+    det: 6
+    exec: 120
+    total: 320

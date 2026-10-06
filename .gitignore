@@ -1,0 +1,11 @@
+*.pyc
+__pycache__/
+.vscode
+work_dirs/
+
+# Built for a specific interpreter and machine (see agent/tools/build_cad_grad.sh)
+build_native/
+
+# Local check environment (see agent/env/build_check_env.sh). Its contents are
+# listed in agent/env/check_env.txt; the files themselves are gigabytes of wheels.
+.venv-checks/

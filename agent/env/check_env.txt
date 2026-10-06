@@ -1,0 +1,62 @@
+# Package list of the LOCAL checks environment (`.venv-checks` at the repository root).
+#
+# Why it exists. The checks and `preflight.py` run on the workstation, not on the
+# cluster, before each upload, and no single local interpreter used to be enough:
+#   conda 3.13   - has trimesh and pyvista but no cadquery/OCP, and its PyYAML is
+#                  the 3.11 one and fails on 3.13 with `collections.Hashable`;
+#   /usr/bin/py3 - has PyYAML and nothing else.
+# This environment removes the need to split configs and checks between interpreters.
+#
+# Conditions. Versions are taken FROM `run_env.txt`, the list the run environment
+# on the node was built from (python 3.12). Install on `/usr/bin/python3.12`
+# (3.12.x is the only line with a `cadquery-ocp==7.7.2` wheel; there is none for 3.13).
+#
+# WHAT THIS ENVIRONMENT IS NOT.
+#
+# 1. It is not the run environment. There is no vLLM, torch or CUDA: models are
+#    not served locally, and everything that needs them is stubbed in the checks.
+#    No run numbers are measured in this environment.
+# 2. IoU is computed locally, but its cost is not the server's, so draw no
+#    conclusions from local timings.
+# 3. `_cad_grad` is not pip-installable (it is tied to the interpreter ABI).
+#    Without it the optimizer is silently off, and preflight warns about it.
+#    Build for this interpreter:
+#    `./agent/tools/build_cad_grad.sh .venv-checks/bin/python`.
+#
+# Built and verified by `agent/env/build_check_env.sh` (`--check` only verifies).
+# Verify the OUTCOME, not legality: after the build run `agent/run_tests.sh` and
+# `agent/tools/preflight.py`.
+
+# --- configs ------------------------------------------------------------------
+pyyaml==6.0.3
+
+# --- numerics --------------------------------------------------------------------
+numpy==2.2.6
+scipy==1.17.1
+
+# --- DSL execution -----------------------------------------------------------
+cadquery-ocp==7.7.2
+cadquery==2.5.2
+
+# --- meshes and metrics -----------------------------------------------------------
+trimesh==4.12.2
+manifold3d==3.5.0
+embreex==4.4.0
+networkx==3.6.1
+shapely==2.1.2
+rtree==1.4.1
+pillow==12.2.0
+pykdtree==1.4.3
+point-cloud-utils==0.34.0
+
+# --- view rendering -------------------------------------------------------------
+pyvista==0.46.3
+vtk==9.4.2
+
+# --- model client -----------------------------------------------------------
+# Installed although no models run locally: the client is imported on the way to
+# the config check, and its absence would turn an import failure into a config failure.
+openai==2.24.0
+
+# --- misc -------------------------------------------------------------------
+tqdm==4.67.3
