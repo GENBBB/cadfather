@@ -8,7 +8,7 @@ turn it looks at the target and the best candidates so far and picks one tool:
 
 | Tool | What it does |
 |---|---|
-| `stepwise` | appends one operation proposed by the step-wise generator VLM (CADENA) |
+| `stepwise` | appends one operation proposed by the stepwise generator VLM (CADENA) |
 | `det_cold` | fits a first operation to the target mesh algorithmically (`vendor/cadfit`) |
 | `det_warm` | algorithmic reconstruction continuing from a candidate |
 | `optimize` | tunes the numeric parameters of a candidate's code to the target (`vendor/cad_optimizer`) |
