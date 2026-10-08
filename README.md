@@ -1,5 +1,6 @@
 # CADFather
-Paper: [arXiv:2610.09127](https://arxiv.org/abs/2610.09127)
+  
+- Paper: [arXiv:2610.09127](https://arxiv.org/abs/2610.09127)
 
 Code for **CADFather**, an agent that reconstructs a CAD program (CadQuery code in the
 CADENA DSL) from a target mesh. A tool-calling assistant LLM runs the search. On every
